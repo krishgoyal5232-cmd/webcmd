@@ -1,0 +1,133 @@
+[3:39 pm, 12/9/2026] ਵਡਾ ਪਾਵ: import { exec } from 'child_process';
+import fs from 'fs/promises';
+import dotenv from 'dotenv';
+import util from 'util';
+import { fileURLToPath } from 'url';
+import readline from 'readline';
+
+dotenv.config();
+
+const execAsync = util.promisify(exec);
+const MEMORY_FILE = './memory.json';
+
+function parseJsonSafely(rawText, fallback = {}) {
+    if (!rawText) return fallback;
+    try {
+        return JSON.parse(rawText);
+    } catch {
+        const trimmed = String(rawText).trim();
+        const start = trimmed.indexOf('{');
+        const end = trimmed.lastIndexOf('}');
+        if (start !== -1 && end !== -1 && end > start) {
+            try {
+                return JSON.parse(trimmed.slice(start, end + 1));
+            } catch {
+                return fallback;
+            }
+        }
+        return fallback;
+    }
+}
+
+function isAuthFailure(error) {
+    return error?.status === 401 || error?.code === 'invalid_api_key' || /invalid token|unauthorized|authentication/i.test(error?.message || '');
+}
+
+async function createGroqClient() {
+    const apiKey = process.env.GROQ_API_KEY; 
+    
+    if (!apiKey) {
+        console.warn('⚠️ GROQ_API_KEY is missing from your .env file.');
+        return null;
+    }
+
+    try {
+        const { default: OpenAI } = await import('openai');
+        
+        // Point the OpenAI SDK to Groq's native endpoint
+        return new OpenAI({
+            apiKey,
+            baseURL: "https://api.groq.com/openai/v1"
+        });
+    } catch (error) {
+        console.warn('OpenAI SDK not available; continuing in offline mode.', error.message);
+        return null;
+    }
+}
+
+async function loadMemory() {
+    try {
+        const data = await fs.readFile(MEMORY_FILE, 'utf-8');
+        const parsed = JSON.parse(data);
+        return Array.isArray(parsed?.learnings) ? parsed.learnings : [];
+    } catch {
+        return [];
+    }
+}
+
+async function saveMemory(newLearning) {
+    const memory = await loadMemory();
+    if (newLearning && !memory.includes(newLearning)) {
+        memory.push(newLearning);
+        await fs.writeFile(MEMORY_FILE, JSON.stringify({ learnings: memory }, null, 2));
+        console.log(\n🧠 [Saved to Memory]: ${newLearning});
+    }
+}
+
+function cleanHtmlText(input = '') {
+    return String(input)
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+async function fetchDuckDuckGoResults(prompt) {
+    const url = https://html.duckduckgo.com/html/?q=${encodeURIComponent(prompt)};
+    const response = await fetch(url, {
+        headers: { 'User-Agent': 'Mozilla/5.0' }
+    });
+
+    if (!response.ok) throw new Error(DuckDuckGo request failed);
+
+    const html = await response.text();
+    const titleMatches = [...html.matchAll(/class="result__title"[^>]>\s<a[^>]>([\s\S]?)<\/a>/gi)];
+    const snippetMatches = [...html.matchAll(/class="result__snippet"[^>]>([\s\S]?)<\/div>/gi)];
+
+    const extracted = [];
+    for (let index = 0; index < Math.min(titleMatches.length, snippetMatches.length, 3); index += 1) {
+        const title = cleanHtmlText(titleMatches[index][1]);
+        const snippet = cleanHtmlText(snippetMatches[index][1]);
+        if (title) extracted.push(${title}${snippet ? ` — ${snippet} : ''}`);
+    }
+
+    return extracted.length ? extracted.join('\n') : No fallback results for "${prompt}".;
+}
+
+async function useLiveWeb(prompt) {
+    console.log(\n🌐 [Using Live Web]: ${prompt});
+    try {
+        const { stdout } = await execAsync(where webcmd, { timeout: 15000 });
+        if (stdout && stdout.trim()) {
+            const result = await execAsync(webcmd run "${prompt}");
+            return result.stdout || result.stderr || 'No output from webcmd.';
+        }
+    } catch {
+        // Fallback
+    }
+
+    try {
+        return await fetchDuckDuckGoResults(prompt);
+    } catch (error…
+[3:39 pm, 12/9/2026] ਵਡਾ ਪਾਵ: LLM_PROVIDER=groq
+
+GROQ_API_KEY=gsk_gsk_zKiEs1C5KTpbTmtBpjZ1WGdyb3FYXkm8dl3LVrrQIKWRnOo59RfJ
+GROQ_MODEL=openai/gpt-oss-120b
+
+WEBCMD_BIN=webcmd
+WEBCMD_PROFILE=default
+WEBCMD_HEADLESS=true
+
+AGENT_MAX_STEPS=30
+AGENT_TOOL_TIMEOUT_MS=120000
+AGENT_MEMORY_DIR=./data/memory
